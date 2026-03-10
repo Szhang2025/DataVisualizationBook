@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Visualization with R</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #0d1117;
+    --paper: #f8f6f1;
+    --cream: #f2ede4;
+    --navy: #0f2942;
+    --teal: #0e7490;
+    --teal-light: #cffafe;
+    --amber: #d97706;
+    --amber-light: #fef3c7;
+    --coral: #dc4a2d;
+    --sage: #4a7c59;
+    --grid: rgba(15,41,66,0.06);
+    --serif: 'DM Serif Display', Georgia, serif;
+    --sans: 'Syne', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* ── BACKGROUND GRID ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── NOISE TEXTURE ── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+    z-index: 1;
+  }
+
+  .hero-left {
+    padding: 80px 60px 80px 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+  }
+
+  .hero-right {
+    background: var(--navy);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Animated chart in hero */
+  .chart-canvas {
+    position: relative;
+    width: 380px;
+    height: 340px;
+  }
+
+  .bar {
+    position: absolute;
+    bottom: 0;
+    width: 38px;
+    border-radius: 4px 4px 0 0;
+    opacity: 0;
+    animation: barRise 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .bar:nth-child(1) { left: 0;    height: 60%;  background: #0e7490; animation-delay: 0.1s; }
+  .bar:nth-child(2) { left: 55px; height: 45%;  background: #d97706; animation-delay: 0.2s; }
+  .bar:nth-child(3) { left: 110px;height: 80%;  background: #dc4a2d; animation-delay: 0.3s; }
+  .bar:nth-child(4) { left: 165px;height: 55%;  background: #4a7c59; animation-delay: 0.4s; }
+  .bar:nth-child(5) { left: 220px;height: 95%;  background: #7c3aed; animation-delay: 0.5s; }
+  .bar:nth-child(6) { left: 275px;height: 70%;  background: #0e7490; animation-delay: 0.6s; }
+  .bar:nth-child(7) { left: 330px;height: 38%;  background: #d97706; animation-delay: 0.7s; }
+
+  @keyframes barRise {
+    from { opacity: 0; transform: scaleY(0); transform-origin: bottom; }
+    to   { opacity: 1; transform: scaleY(1); transform-origin: bottom; }
+  }
+
+  .scatter-dot {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0;
+    animation: dotPop 0.5s ease forwards;
+  }
+  @keyframes dotPop {
+    from { opacity: 0; transform: scale(0); }
+    to   { opacity: 0.85; transform: scale(1); }
+  }
+
+  .line-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0;
+    animation: fadeIn 1.2s ease 1s forwards;
+  }
+  @keyframes fadeIn { to { opacity: 0.6; } }
+
+  .chart-label {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.05em;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--teal-light);
+    color: var(--teal);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    padding: 6px 14px;
+    border-radius: 2px;
+    margin-bottom: 32px;
+    width: fit-content;
+    animation: slideIn 0.6s ease both;
+  }
+  .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .hero-title {
+    font-family: var(--serif);
+    font-size: clamp(42px, 5vw, 68px);
+    line-height: 1.05;
+    color: var(--navy);
+    margin-bottom: 12px;
+    animation: slideIn 0.7s ease 0.1s both;
+  }
+
+  .hero-title em {
+    color: var(--teal);
+    font-style: italic;
+  }
+
+  .hero-sub {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--teal);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+    animation: slideIn 0.7s ease 0.15s both;
+  }
+
+  .hero-desc {
+    font-size: 16px;
+    line-height: 1.7;
+    color: #3d4a52;
+    max-width: 480px;
+    margin-bottom: 48px;
+    animation: slideIn 0.7s ease 0.2s both;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 36px;
+    animation: slideIn 0.7s ease 0.3s both;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-num {
+    font-family: var(--serif);
+    font-size: 36px;
+    color: var(--navy);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #8a9aaa;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .stat-divider { width: 1px; background: var(--grid); align-self: stretch; margin: 4px 0; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Decorative corner marks */
+  .hero-left::before, .hero-left::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: var(--teal);
+    border-style: solid;
+    opacity: 0.3;
+  }
+  .hero-left::before { top: 40px; left: 40px; border-width: 2px 0 0 2px; }
+  .hero-left::after  { bottom: 40px; right: 20px; border-width: 0 2px 2px 0; }
+
+  /* ── NAV ── */
+  .nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 60px;
+    background: rgba(248,246,241,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(15,41,66,0.08);
+    transform: translateY(-100%);
+    animation: navDrop 0.6s ease 1.2s forwards;
+  }
+  @keyframes navDrop { to { transform: translateY(0); } }
+
+  .nav-logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--navy);
+    letter-spacing: 0.05em;
+  }
+  .nav-logo span { color: var(--teal); }
+
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+  .nav-links a {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #5a6a7a;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--teal); }
+
+  /* ── SCROLL INDICATOR ── */
+  .scroll-hint {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: rgba(15,41,66,0.4);
+    text-transform: uppercase;
+    z-index: 2;
+    animation: fadeIn 1s ease 2s both;
+  }
+  .scroll-arrow {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--teal), transparent);
+    animation: scrollPulse 2s ease infinite;
+  }
+  @keyframes scrollPulse { 0%,100% { transform: scaleY(1); opacity: 1; } 50% { transform: scaleY(0.6); opacity: 0.4; } }
+
+  /* ── MAIN CONTENT ── */
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 120px 60px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    margin-bottom: 64px;
+  }
+
+  .section-num {
+    font-family: var(--serif);
+    font-size: 80px;
+    color: rgba(15,41,66,0.06);
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .section-title-wrap h2 {
+    font-family: var(--serif);
+    font-size: 40px;
+    color: var(--navy);
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+
+  .section-title-wrap p {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--teal);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* ── CHAPTER GRID ── */
+  .chapter-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    background: rgba(15,41,66,0.1);
+    border: 1px solid rgba(15,41,66,0.1);
+  }
+
+  .chapter-card {
+    background: var(--paper);
+    padding: 36px 32px;
+    position: relative;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    overflow: hidden;
+    transition: background 0.3s, transform 0.2s;
+    group: true;
+  }
+
+  .chapter-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--navy);
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.77, 0, 0.175, 1);
+    z-index: 0;
+  }
+
+  .chapter-card:hover::before { transform: translateY(0); }
+  .chapter-card:hover .ch-num,
+  .chapter-card:hover .ch-title,
+  .chapter-card:hover .ch-desc,
+  .chapter-card:hover .ch-tags span { color: rgba(255,255,255,0.9); border-color: rgba(255,255,255,0.2); }
+  .chapter-card:hover .ch-icon { background: rgba(255,255,255,0.1); color: white; }
+  .chapter-card:hover .ch-arrow { opacity: 1; transform: translate(4px, -4px); color: white; }
+  .chapter-card:hover .ch-bar { background: rgba(255,255,255,0.2); }
+  .chapter-card:hover .ch-bar::after { background: rgba(255,255,255,0.7); }
+
+  /* Special color accents per chapter */
+  .chapter-card[data-color="teal"]::before      { background: #0f2942; }
+  .chapter-card[data-color="amber"]::before     { background: #92400e; }
+  .chapter-card[data-color="coral"]::before     { background: #991b1b; }
+  .chapter-card[data-color="sage"]::before      { background: #1a4731; }
+  .chapter-card[data-color="purple"]::before    { background: #3b0764; }
+  .chapter-card[data-color="rose"]::before      { background: #881337; }
+  .chapter-card[data-color="slate"]::before     { background: #1e293b; }
+  .chapter-card[data-color="indigo"]::before    { background: #1e1b4b; }
+  .chapter-card[data-color="cyan"]::before      { background: #083344; }
+  .chapter-card[data-color="orange"]::before    { background: #7c2d12; }
+  .chapter-card[data-color="emerald"]::before   { background: #064e3b; }
+  .chapter-card[data-color="violet"]::before    { background: #2e1065; }
+
+  .card-inner { position: relative; z-index: 1; }
+
+  .ch-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--teal);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    transition: color 0.3s;
+  }
+
+  .ch-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: var(--cream);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    margin-bottom: 20px;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .ch-title {
+    font-family: var(--serif);
+    font-size: 20px;
+    line-height: 1.2;
+    color: var(--navy);
+    margin-bottom: 12px;
+    transition: color 0.3s;
+  }
+
+  .ch-desc {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #6a7a8a;
+    margin-bottom: 20px;
+    transition: color 0.3s;
+  }
+
+  .ch-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 24px;
+  }
+
+  .ch-tags span {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: #8a9aaa;
+    border: 1px solid rgba(15,41,66,0.15);
+    padding: 3px 8px;
+    border-radius: 2px;
+    transition: color 0.3s, border-color 0.3s;
+  }
+
+  /* Mini sparkline */
+  .ch-sparkline {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 28px;
+    margin-bottom: 16px;
+  }
+
+  .ch-bar {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    background: rgba(15,41,66,0.08);
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+
+  .ch-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    border-radius: 2px 2px 0 0;
+    background: var(--teal);
+    transition: background 0.3s;
+    animation: barGrow 1s ease both;
+  }
+
+  @keyframes barGrow { from { height: 0; } }
+
+  .ch-arrow {
+    position: absolute;
+    top: 32px; right: 32px;
+    font-size: 18px;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s, color 0.3s;
+    z-index: 1;
+  }
+
+  /* ── FEATURED (first chapter) ── */
+  .chapter-card.featured {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    padding: 56px;
+  }
+
+  .chapter-card.featured .ch-title {
+    font-size: 32px;
+    margin-bottom: 16px;
+  }
+
+  .featured-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cream);
+    border-radius: 4px;
+    padding: 32px;
+    position: relative;
+    z-index: 1;
+    transition: background 0.3s;
+    min-height: 180px;
+  }
+
+  .chapter-card.featured:hover .featured-visual {
+    background: rgba(255,255,255,0.1);
+  }
+
+  .mini-ggplot {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    grid-template-rows: 1fr 20px;
+    gap: 4px;
+    width: 100%;
+    max-width: 260px;
+    height: 160px;
+  }
+
+  .ggplot-area {
+    background: white;
+    border: 1px solid rgba(15,41,66,0.1);
+    position: relative;
+    overflow: hidden;
+    grid-column: 2;
+    grid-row: 1;
+    border-radius: 2px;
+    transition: border-color 0.3s;
+  }
+
+  .ggplot-dot {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .ggplot-yaxis {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-right: 4px;
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .ggplot-xaxis {
+    display: flex;
+    justify-content: space-around;
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .axis-tick {
+    font-family: var(--mono);
+    font-size: 7px;
+    color: #aaa;
+  }
+
+  /* ── TOOLS SECTION ── */
+  .tools-section {
+    margin-top: 120px;
+    padding: 80px;
+    background: var(--navy);
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tools-section::before {
+    content: 'R';
+    position: absolute;
+    right: -40px;
+    bottom: -60px;
+    font-family: var(--serif);
+    font-size: 400px;
+    color: rgba(255,255,255,0.03);
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 48px;
+  }
+
+  .tool-card {
+    padding: 28px 24px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    transition: border-color 0.3s, background 0.3s;
+  }
+
+  .tool-card:hover {
+    border-color: var(--teal);
+    background: rgba(14,116,144,0.1);
+  }
+
+  .tool-icon { font-size: 28px; margin-bottom: 16px; }
+  .tool-name { font-family: var(--mono); font-size: 13px; font-weight: 500; color: white; margin-bottom: 8px; }
+  .tool-desc { font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.6; }
+
+  /* ── FOOTER ── */
+  footer {
+    position: relative;
+    z-index: 1;
+    padding: 48px 60px;
+    border-top: 1px solid rgba(15,41,66,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-logo {
+    font-family: var(--serif);
+    font-size: 20px;
+    color: var(--navy);
+  }
+
+  .footer-mono {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #aaa;
+    letter-spacing: 0.08em;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero-right { display: none; }
+    .hero-left { padding: 120px 32px 80px; }
+    .chapter-grid { grid-template-columns: 1fr 1fr; }
+    .chapter-card.featured { grid-column: 1 / -1; grid-template-columns: 1fr; }
+    main { padding: 80px 32px; }
+    .tools-grid { grid-template-columns: 1fr 1fr; }
+    .tools-section { padding: 48px 32px; }
+    .nav { padding: 16px 32px; }
+  }
+
+  @media (max-width: 600px) {
+    .chapter-grid { grid-template-columns: 1fr; }
+    .hero-stats { gap: 20px; }
+    footer { flex-direction: column; gap: 16px; text-align: center; }
+  }
+
+  /* ── CURSOR GLOW ── */
+  .cursor-glow {
+    position: fixed;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(14,116,144,0.08), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    transform: translate(-50%, -50%);
+    transition: left 0.1s, top 0.1s;
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor-glow" id="glow"></div>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-logo">dataviz<span>.</span>R</div>
+  <ul class="nav-links">
+    <li><a href="#chapters">Chapters</a></li>
+    <li><a href="#tools">Tools</a></li>
+    <li><a href="DataViz_R_Ch1.docx" download>Download Ch.1</a></li>
+    <li><a href="#chapters">All 12 Chapters ↓</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-left">
+    <div class="hero-badge">
+      <span class="badge-dot"></span>
+      12 Chapters · R / RStudio / ggplot2
+    </div>
+    <h1 class="hero-title">
+      Data<br><em>Visualization</em><br>with R
+    </h1>
+    <p class="hero-sub">An Introductory Textbook</p>
+    <p class="hero-desc">
+      From your first scatter plot to interactive dashboards — a systematic journey through the grammar of graphics, designed for students and analysts at every level.
+    </p>
+    <div class="hero-stats">
+      <div class="stat">
+        <span class="stat-num">12</span>
+        <span class="stat-label">Chapters</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-num">240</span>
+        <span class="stat-label">Exercises</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-num">240</span>
+        <span class="stat-label">Quiz Q's</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-right">
+    <!-- Animated bar chart -->
+    <div style="position:relative;">
+      <div class="chart-canvas">
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <!-- Scatter dots -->
+        <div class="scatter-dot" style="width:10px;height:10px;background:#0e7490;top:30%;left:10%;animation-delay:1s;"></div>
+        <div class="scatter-dot" style="width:14px;height:14px;background:#d97706;top:55%;left:25%;animation-delay:1.1s;"></div>
+        <div class="scatter-dot" style="width:8px;height:8px;background:#dc4a2d;top:20%;left:45%;animation-delay:1.2s;"></div>
+        <div class="scatter-dot" style="width:12px;height:12px;background:#4a7c59;top:40%;left:65%;animation-delay:1.3s;"></div>
+        <div class="scatter-dot" style="width:16px;height:16px;background:#7c3aed;top:70%;left:80%;animation-delay:1.4s;"></div>
+        <!-- Axes labels -->
+        <span class="chart-label" style="bottom:-20px;left:0;width:100%;text-align:center;">Engine Displacement (L)</span>
+        <span class="chart-label" style="top:50%;left:-60px;transform:rotate(-90deg) translateX(50%);white-space:nowrap;">Highway MPG</span>
+      </div>
+      <div style="margin-top:32px;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.35);text-align:center;letter-spacing:0.15em;">
+        ggplot(mpg, aes(displ, hwy)) + geom_point()
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-hint">
+    <span>Scroll</span>
+    <div class="scroll-arrow"></div>
+  </div>
+</section>
+
+<!-- CHAPTERS -->
+<main id="chapters">
+  <div class="section-header">
+    <div class="section-num">01</div>
+    <div class="section-title-wrap">
+      <h2>All Chapters</h2>
+      <p>All 12 chapters available — click any card to download</p>
+    </div>
+  </div>
+
+  <div class="chapter-grid">
+
+    <!-- FEATURED: Chapter 1 -->
+    <a class="chapter-card featured" href="DataViz_R_Ch1.docx" download data-color="teal">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 01 · Download ↓</div>
+        <div class="ch-title">Introduction to Data Visualization</div>
+        <div class="ch-desc">What is data visualization and why does it matter? Install R and RStudio, meet ggplot2, and create your first scatter plot. Explore Anscombe's Quartet and the layered grammar of graphics.</div>
+        <div class="ch-tags">
+          <span>R Setup</span>
+          <span>ggplot2</span>
+          <span>Grammar of Graphics</span>
+          <span>geom_point</span>
+          <span>ggsave</span>
+        </div>
+        <div class="ch-sparkline">
+          <div class="ch-bar" style="height:100%"><div style="position:absolute;bottom:0;left:0;right:0;height:60%;background:var(--teal);border-radius:2px 2px 0 0;transition:background 0.3s;"></div></div>
+          <div class="ch-bar" style="height:100%"><div style="position:absolute;bottom:0;left:0;right:0;height:45%;background:var(--teal);border-radius:2px 2px 0 0;transition:background 0.3s;"></div></div>
+          <div class="ch-bar" style="height:100%"><div style="position:absolute;bottom:0;left:0;right:0;height:80%;background:var(--teal);border-radius:2px 2px 0 0;transition:background 0.3s;"></div></div>
+          <div class="ch-bar" style="height:100%"><div style="position:absolute;bottom:0;left:0;right:0;height:55%;background:var(--teal);border-radius:2px 2px 0 0;transition:background 0.3s;"></div></div>
+          <div class="ch-bar" style="height:100%"><div style="position:absolute;bottom:0;left:0;right:0;height:95%;background:var(--teal);border-radius:2px 2px 0 0;transition:background 0.3s;"></div></div>
+          <div class="ch-bar" style="height:100%"><div style="position:absolute;bottom:0;left:0;right:0;height:70%;background:var(--teal);border-radius:2px 2px 0 0;transition:background 0.3s;"></div></div>
+        </div>
+      </div>
+      <div class="featured-visual">
+        <div class="mini-ggplot">
+          <div class="ggplot-yaxis">
+            <span class="axis-tick">40</span>
+            <span class="axis-tick">30</span>
+            <span class="axis-tick">20</span>
+            <span class="axis-tick">10</span>
+          </div>
+          <div class="ggplot-area">
+            <div class="ggplot-dot" style="left:15%;top:30%;background:#0e7490;width:9px;height:9px;"></div>
+            <div class="ggplot-dot" style="left:28%;top:55%;background:#d97706;width:11px;height:11px;"></div>
+            <div class="ggplot-dot" style="left:42%;top:22%;background:#dc4a2d;width:8px;height:8px;"></div>
+            <div class="ggplot-dot" style="left:55%;top:68%;background:#4a7c59;width:10px;height:10px;"></div>
+            <div class="ggplot-dot" style="left:67%;top:38%;background:#7c3aed;width:13px;height:13px;"></div>
+            <div class="ggplot-dot" style="left:78%;top:50%;background:#0e7490;width:9px;height:9px;"></div>
+            <div class="ggplot-dot" style="left:88%;top:72%;background:#d97706;width:7px;height:7px;"></div>
+            <div class="ggplot-dot" style="left:20%;top:80%;background:#dc4a2d;width:12px;height:12px;"></div>
+            <div class="ggplot-dot" style="left:50%;top:45%;background:#4a7c59;width:8px;height:8px;"></div>
+          </div>
+          <div></div>
+          <div class="ggplot-xaxis">
+            <span class="axis-tick">2</span>
+            <span class="axis-tick">3</span>
+            <span class="axis-tick">4</span>
+            <span class="axis-tick">5</span>
+            <span class="axis-tick">6</span>
+          </div>
+        </div>
+      </div>
+      <span class="ch-arrow">↗</span>
+    </a>
+
+    <!-- Chapters 2–12 -->
+    <a class="chapter-card" href="DataViz_R_Ch2.docx" download data-color="amber">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 02 · Download ↓</div>
+        <div class="ch-icon">📐</div>
+        <div class="ch-title">The Grammar of Graphics</div>
+        <div class="ch-desc">Deep-dive into ggplot2 layers: aesthetics, geoms, scales, coordinate systems, and how they combine.</div>
+        <div class="ch-tags"><span>aes()</span><span>scales</span><span>coords</span><span>layers</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch3.docx" download data-color="coral">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 03 · Download ↓</div>
+        <div class="ch-icon">📊</div>
+        <div class="ch-title">Visualizing Distributions</div>
+        <div class="ch-desc">Histograms, density plots, box plots, violin plots, and QQ plots — revealing the shape of your data.</div>
+        <div class="ch-tags"><span>geom_histogram</span><span>geom_boxplot</span><span>geom_violin</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch4.docx" download data-color="sage">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 04 · Download ↓</div>
+        <div class="ch-icon">🔗</div>
+        <div class="ch-title">Visualizing Relationships</div>
+        <div class="ch-desc">Scatter plots, bubble charts, correlation matrices, and pair plots for multivariate exploration.</div>
+        <div class="ch-tags"><span>geom_smooth</span><span>corrplot</span><span>GGally</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch5.docx" download data-color="purple">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 05 · Download ↓</div>
+        <div class="ch-icon">🏷️</div>
+        <div class="ch-title">Visualizing Categorical Data</div>
+        <div class="ch-desc">Bar charts, lollipop charts, dot plots, Cleveland dot charts, and mosaic plots for nominal data.</div>
+        <div class="ch-tags"><span>geom_bar</span><span>geom_col</span><span>fct_reorder</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch6.docx" download data-color="rose">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 06 · Download ↓</div>
+        <div class="ch-icon">📈</div>
+        <div class="ch-title">Visualizing Time Series</div>
+        <div class="ch-desc">Line charts, area charts, calendar heatmaps, and seasonal decomposition for temporal patterns.</div>
+        <div class="ch-tags"><span>geom_line</span><span>geom_area</span><span>lubridate</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch7.docx" download data-color="slate">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 07 · Download ↓</div>
+        <div class="ch-icon">🥧</div>
+        <div class="ch-title">Visualizing Proportions</div>
+        <div class="ch-desc">Pie charts, stacked bars, treemaps, and waffle charts — when and how to show part-to-whole.</div>
+        <div class="ch-tags"><span>treemapify</span><span>waffle</span><span>coord_polar</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch8.docx" download data-color="indigo">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 08 · Download ↓</div>
+        <div class="ch-icon">🗺️</div>
+        <div class="ch-title">Visualizing Spatial Data</div>
+        <div class="ch-desc">Choropleth maps, point maps, dot density maps, and the sf package for geographic visualization.</div>
+        <div class="ch-tags"><span>sf</span><span>geom_sf</span><span>coord_sf</span><span>choropleth</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch9.docx" download data-color="cyan">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 09 · Download ↓</div>
+        <div class="ch-icon">🎨</div>
+        <div class="ch-title">Color, Themes & Styling</div>
+        <div class="ch-desc">Color theory, accessible palettes, custom ggplot2 themes, and the craft of visual refinement.</div>
+        <div class="ch-tags"><span>viridis</span><span>theme()</span><span>RColorBrewer</span><span>a11y</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch10.docx" download data-color="orange">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 10 · Download ↓</div>
+        <div class="ch-icon">🔲</div>
+        <div class="ch-title">Multivariate & Faceted Plots</div>
+        <div class="ch-desc">Faceting, heatmaps, parallel coordinates, pair plots, and patchwork multi-panel figures.</div>
+        <div class="ch-tags"><span>facet_wrap</span><span>facet_grid</span><span>patchwork</span><span>ggpairs</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch11.docx" download data-color="emerald">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 11 · Download ↓</div>
+        <div class="ch-icon">⚡</div>
+        <div class="ch-title">Interactive Visualizations</div>
+        <div class="ch-desc">plotly, gganimate, Shiny, leaflet, DT tables — bringing your charts to life for the web.</div>
+        <div class="ch-tags"><span>plotly</span><span>gganimate</span><span>Shiny</span><span>leaflet</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+    <a class="chapter-card" href="DataViz_R_Ch12.docx" download data-color="violet">
+      <div class="card-inner">
+        <div class="ch-num">Chapter 12 · Download ↓</div>
+        <div class="ch-icon">✍️</div>
+        <div class="ch-title">Communicating with Data</div>
+        <div class="ch-desc">Exploratory vs. explanatory thinking, annotation, data-ink ratio, chart critique, and reproducibility.</div>
+        <div class="ch-tags"><span>annotate()</span><span>data-ink</span><span>renv</span><span>here</span></div>
+      </div>
+      <span class="ch-arrow">↓</span>
+    </a>
+
+  </div>
+</main>
+
+<!-- TOOLS -->
+<section class="tools-section" id="tools">
+  <div style="max-width:1080px;margin:0 auto;position:relative;z-index:1;">
+    <p style="font-family:var(--mono);font-size:11px;letter-spacing:0.15em;color:rgba(255,255,255,0.4);text-transform:uppercase;margin-bottom:12px;">What You'll Use</p>
+    <h2 style="font-family:var(--serif);font-size:36px;color:white;line-height:1.1;">Your Toolkit</h2>
+    <div class="tools-grid">
+      <div class="tool-card">
+        <div class="tool-icon">🔵</div>
+        <div class="tool-name">R Language</div>
+        <div class="tool-desc">Free, open-source statistical computing environment. Download from CRAN.</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon">🟠</div>
+        <div class="tool-name">RStudio / Posit</div>
+        <div class="tool-desc">The premier IDE for R — or use Posit Cloud for browser-based access.</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon">🟣</div>
+        <div class="tool-name">ggplot2</div>
+        <div class="tool-desc">The grammar of graphics implementation for R. The primary visualization engine of this book.</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon">🟢</div>
+        <div class="tool-name">tidyverse</div>
+        <div class="tool-desc">A suite of packages (dplyr, tidyr, readr, purrr) that make data wrangling intuitive.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">Data Visualization with R</div>
+  <div class="footer-mono">12 chapters · 240 exercises · 240 quiz questions</div>
+  <div class="footer-mono">Built with ggplot2 &amp; R</div>
+</footer>
+
+<script>
+  // Cursor glow
+  const glow = document.getElementById('glow');
+  document.addEventListener('mousemove', e => {
+    glow.style.left = e.clientX + 'px';
+    glow.style.top  = e.clientY + 'px';
+  });
+
+  // Stagger chapter card animation on scroll
+  const cards = document.querySelectorAll('.chapter-card');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => {
+          entry.target.style.opacity = '1';
+          entry.target.style.transform = 'translateY(0)';
+        }, 60 * Array.from(cards).indexOf(entry.target));
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  cards.forEach((card, i) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(20px)';
+    card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    observer.observe(card);
+  });
+
+  // Hover: stop propagation for featured card download
+  document.querySelector('.chapter-card.featured').addEventListener('click', e => {
+    // allow default download
+  });
+</script>
+</body>
+</html>
